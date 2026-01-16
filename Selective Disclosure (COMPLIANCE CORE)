@@ -1,0 +1,25 @@
+#[derive(Clone, Debug)]
+pub struct ViewingKey {
+    pub commitment: [u8; 32],
+    pub secret: [u8; 32],
+}
+
+#[derive(Debug)]
+pub struct DisclosureProof {
+    pub commitment: [u8; 32],
+    pub revealed_amount: u64,
+}
+
+impl ViewingKey {
+    pub fn new(commitment: [u8; 32], secret: [u8; 32]) -> Self {
+        Self { commitment, secret }
+    }
+
+    /// User reveals ONLY what is required by regulator
+    pub fn disclose_amount(&self, amount: u64) -> DisclosureProof {
+        DisclosureProof {
+            commitment: self.commitment,
+            revealed_amount: amount,
+        }
+    }
+}
