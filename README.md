@@ -70,3 +70,4 @@ Contributions welcome!
 Fork → branch → PR with viewing keys, nullifiers, or Merkle integration would be awesome. 🚀
 Built for learning & tinkering with privacy vs compliance in blockchain.
 
+ok
