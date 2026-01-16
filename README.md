@@ -1,73 +1,150 @@
-# privacy-vs-compliance
+# Privacy vs Compliance – zk Transfers with Halo2
 
-# Private Transfer Starter – Halo2
+This repository explores the trade-off between **on-chain privacy** and **regulatory compliance** using
+**zero-knowledge proofs (Halo2 / zk-SNARKs)**.
 
-A simple, educational starter project demonstrating a basic **shielded-like private transfer** using **Halo2** (zk-SNARK proofs).
+The goal is to demonstrate how **private value transfers** can coexist with
+**auditing, selective disclosure, and regulatory requirements**.
 
-This circuit proves knowledge of a valid transfer:
-- Hides the sender's old balance and transfer amount
-- Uses Poseidon hash commitments for both sender and receiver
-- Keeps everything private except the public commitments
+---
 
-Goal: Provide an easy entry point for experimenting with privacy-preserving payments on Ethereum-like chains, with future potential for **selective disclosure** (e.g., reveal amount to auditors/regulators via viewing keys).
+## 🧠 Problem Statement
 
-## Current Status
-Minimal working version (commit-and-verify style shielded transfer).
+Blockchain systems face a fundamental tension:
 
-- Private inputs: sender old balance, amount, two blinding factors
-- Public outputs: sender & receiver commitments
-- Verified via MockProver
+- **Privacy** → users want hidden balances and transactions  
+- **Compliance** → regulators require auditability, AML, and selective access  
 
-## Roadmap / To-Do
-- [ ] Add Merkle proof for note existence (shielded pool membership)
-- [ ] Implement viewing key + selective disclosure logic
-- [ ] Add nullifier to prevent double-spending
-- [ ] Integration tests with ethers-rs / Foundry
-- [ ] Compare gas/performance with Plonk, Groth16, or Noir
-- [ ] Extend to full shielded note model (inspired by Zcash Orchard / Aztec)
+This project shows how **zk-proofs** allow *both*.
 
-## Requirements
-- Rust 1.75 or newer
-- Cargo
+---
 
-## Quick Start
+## ✨ Key Features
+
+- ✅ Hidden transfer amounts (zk-SNARKs)
+- ✅ Commitment-based balances
+- 🚧 Merkle tree for state inclusion
+- 🚧 Selective disclosure (viewing keys)
+- 🚧 Auditor / regulator access without breaking global privacy
+
+---
+
+## 🏗️ Architecture Overview
+
+User
+├─ creates commitment (value hidden)
+├─ generates zk-proof (valid transfer)
+└─ optionally shares viewing key
+↓
+Blockchain / Verifier
+├─ verifies proof
+└─ stores commitment hash
+↓
+Auditor (optional)
+└─ verifies selective disclosure
+
+
+---
+
+## 🔐 Privacy vs Compliance
+
+| Feature | Privacy-Only | This Model |
+|-------|-------------|------------|
+| Hidden amounts | ✅ | ✅ |
+| Public audit | ❌ | ❌ |
+| Selective disclosure | ❌ | ✅ |
+| AML / audit ready | ❌ | ✅ |
+| GDPR friendly | ✅ | ✅ |
+
+---
+
+## 🧪 Example Use Case
+
+- User makes a private transfer
+- Amount is hidden on-chain
+- Regulator receives a **viewing key**
+- Auditor verifies correctness **without revealing other transactions**
+
+---
+
+## 📂 Project Structure
+
+
+---
+
+## 🚀 Getting Started
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/YOUR-USERNAME/private-transfer-starter.git
-cd private-transfer-starter
-
-# 2. Build & run the example
-cargo run
-
-Simple private transfer circuit works! (mock proof passed)
-Next: add Merkle proof for note existence, viewing keys for selective reveal.
-
+cargo build
 cargo test
+📚 Resources
 
-private-transfer-starter/
-├── Cargo.toml
-├── src/
-│   └── main.rs          # Main circuit definition + mock prover example
-└── README.md
+Halo2 Book
 
-Dependencies (as of January 2026)
+Zero-Knowledge Proofs (zkSNARKs)
 
-halo2_proofs       → from privacy-scaling-explorations/halo2 (main branch)
-halo2wrong         → extra gadgets (Poseidon, etc.)
-rand_core
+Privacy-Preserving Compliance Research
 
-Recommended Resources
+⚠️ Disclaimer
 
-Official Halo2 Book – core concepts & API
-Halo2wrong repo – useful gadgets
-Aztec Noir – higher-level privacy language (easier for contracts)
-Semaphore Protocol – great for anonymous signaling / selective reveal
+This repository is educational / experimental
+Not production-ready. No legal guarantees.
 
-License
-MIT
-Contributions welcome!
-Fork → branch → PR with viewing keys, nullifiers, or Merkle integration would be awesome. 🚀
-Built for learning & tinkering with privacy vs compliance in blockchain.
+---
 
-ok
+## 2️⃣ GitHub Actions CI  
+`.github/workflows/ci.yml`
+
+```yml
+name: Rust CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build
+        run: cargo build --verbose
+
+      - name: Test
+        run: cargo test --verbose
+
+use privacy_vs_compliance::disclosure::ViewingKey;
+
+#[test]
+fn selective_disclosure_works() {
+    let vk = ViewingKey {
+        tx_commitment: [1u8; 32],
+        secret: [2u8; 32],
+    };
+
+    let proof = vk.disclose(100);
+
+    assert_eq!(proof.revealed_amount, 100);
+    assert_eq!(proof.commitment, [1u8; 32]);
+}
+# Selective Disclosure
+
+Selective disclosure allows a user to reveal
+**only specific transaction data** to a trusted auditor.
+
+This avoids:
+- full transaction history leaks
+- public deanonymization
+- non-compliance with GDPR
+
+The mechanism relies on:
+- commitments
+- viewing keys
+- zk-proof verification
