@@ -1,0 +1,13 @@
+/// Placeholder for Halo2 transfer circuit
+///
+/// Enforces:
+/// - input commitment exists in Merkle tree
+/// - output commitment is valid
+/// - sum(inputs) == sum(outputs)
+pub struct TransferCircuit;
+
+impl TransferCircuit {
+    pub fn describe() {
+        println!("Private transfer with zk-proof + compliance hooks");
+    }
+}
