@@ -1,0 +1,10 @@
+# Privacy vs Compliance (zk-SNARKs)
+
+Private transfers with selective regulatory disclosure.
+
+✔ Hidden balances  
+✔ zk-proof verification  
+✔ Viewing keys for auditors  
+✔ GDPR / AML ready architecture  
+
+This repo demonstrates how privacy and compliance can coexist.
