@@ -1,0 +1,1 @@
+Hash(amount || blinding) == commitment
