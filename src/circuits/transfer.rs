@@ -1,31 +1,24 @@
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance},
-    poly::Rotation,
+};
+use halo2_gadgets::poseidon::{
+    primitives::{ConstantLength, P128Pow5T3 as PoseidonSpec},
+    Hash as PoseidonHash,
 };
 use pasta_curves::pallas;
-use sha2::{Digest, Sha256};
 
+/// Poseidon(amount, blinding) == public commitment
 #[derive(Clone, Debug)]
 pub struct TransferCircuit {
-    pub amount: Value<u64>,
-    pub blinding: Value<[u8; 32]>,
+    pub amount: Value<pallas::Base>,
+    pub blinding: Value<pallas::Base>,
 }
 
 #[derive(Clone, Debug)]
 pub struct TransferConfig {
-    amount: Column<Advice>,
-    blinding: Column<Advice>,
-    commitment: Column<Instance>,
-}
-
-impl TransferCircuit {
-    pub fn commitment(amount: u64, blinding: [u8; 32]) -> [u8; 32] {
-        let mut hasher = Sha256::new();
-        hasher.update(amount.to_le_bytes());
-        hasher.update(blinding);
-        hasher.finalize().into()
-    }
+    pub advice: [Column<Advice>; 2],
+    pub commitment: Column<Instance>,
 }
 
 impl Circuit<pallas::Base> for TransferCircuit {
@@ -40,28 +33,58 @@ impl Circuit<pallas::Base> for TransferCircuit {
     }
 
     fn configure(meta: &mut ConstraintSystem<pallas::Base>) -> Self::Config {
-        let amount = meta.advice_column();
-        let blinding = meta.advice_column();
+        let advice = [meta.advice_column(), meta.advice_column()];
         let commitment = meta.instance_column();
 
-        meta.enable_equality(amount);
-        meta.enable_equality(blinding);
+        advice.iter().for_each(|c| meta.enable_equality(*c));
         meta.enable_equality(commitment);
 
-        TransferConfig {
-            amount,
-            blinding,
-            commitment,
-        }
+        TransferConfig { advice, commitment }
     }
 
     fn synthesize(
         &self,
-        _config: Self::Config,
-        _layouter: impl Layouter<pallas::Base>,
+        config: Self::Config,
+        mut layouter: impl Layouter<pallas::Base>,
     ) -> Result<(), Error> {
-        // Hash constraint implemented off-circuit for now
-        // Next step: in-circuit hash (Poseidon)
+        let hash = PoseidonHash::<
+            pallas::Base,
+            PoseidonSpec,
+            ConstantLength<2>,
+            3,
+            2,
+        >::init();
+
+        let commitment = layouter.assign_region(
+            || "poseidon hash",
+            |mut region| {
+                let a = region.assign_advice(
+                    || "amount",
+                    config.advice[0],
+                    0,
+                    || self.amount,
+                )?;
+
+                let b = region.assign_advice(
+                    || "blinding",
+                    config.advice[1],
+                    0,
+                    || self.blinding,
+                )?;
+
+                let output =
+                    hash.hash(layouter.namespace(|| "hash"), [a, b])?;
+
+                Ok(output)
+            },
+        )?;
+
+        layouter.constrain_instance(
+            commitment.cell(),
+            config.commitment,
+            0,
+        )?;
+
         Ok(())
     }
 }
