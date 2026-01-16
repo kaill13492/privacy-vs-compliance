@@ -1,0 +1,200 @@
+//! selective_disclosure_transfer.rs
+//!
+//! Demonstrates a Halo2 circuit for private transfer with selective disclosure:
+//! - Hides sender old balance & blinding factors
+//! - Public: sender commitment, receiver commitment
+//! - Optional selective reveal: prove knowledge of 'amount' without revealing balance/blinding
+//!
+//! Compile & run: cargo run --release
+
+use halo2_proofs::{
+    circuit::{Layouter, SimpleFloorPlanner, Value},
+    plonk::{Circuit, ConstraintSystem, Error, Selector},
+    poly::kzg::commitment::ParamsKZG,
+};
+use halo2wrong::{
+    curves::bn256::{Bn256, Fr as F},
+    gadgets::poseidon::{PoseidonChip, PoseidonConfig, PoseidonInstructions, HASH_TAG_LENGTH},
+};
+use halo2_proofs::dev::MockProver;
+use rand_core::OsRng;
+
+const POSEIDON_WIDTH: usize = 3; // t = 3 → rate 2 + capacity 1
+
+#[derive(Clone, Debug)]
+struct TransferConfig {
+    poseidon_config: PoseidonConfig<F>,
+    sel_disclose: Selector,           // enables the "disclose amount" path
+    instance: halo2_proofs::plonk::Column<halo2_proofs::plonk::Instance>,
+}
+
+#[derive(Clone, Debug)]
+struct PrivateTransferCircuit {
+    // Private witness
+    sender_old_balance: Value<F>,
+    amount:           Value<F>,
+    sender_blinding:  Value<F>,
+    receiver_blinding: Value<F>,
+
+    // Public commitments
+    sender_commitment:   F,
+    receiver_commitment: F,
+
+    // Selective disclosure flag (public input or from instance)
+    disclose_amount:     bool,        // if true → amount becomes public input
+}
+
+impl Circuit<F> for PrivateTransferCircuit {
+    type Config = TransferConfig;
+    type FloorPlanner = SimpleFloorPlanner;
+
+    fn without_witnesses(&self) -> Self {
+        Self {
+            sender_old_balance: Value::unknown(),
+            amount: Value::unknown(),
+            sender_blinding: Value::unknown(),
+            receiver_blinding: Value::unknown(),
+            sender_commitment: F::ZERO,
+            receiver_commitment: F::ZERO,
+            disclose_amount: false,
+        }
+    }
+
+    fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+        let advices = [
+            meta.advice_column(),
+            meta.advice_column(),
+            meta.advice_column(),
+        ];
+        let instance = meta.instance_column();
+        meta.enable_equality(instance);
+
+        let sel_disclose = meta.selector();
+
+        let poseidon_config = PoseidonChip::<_, POSEIDON_WIDTH, 2, 1>::configure(
+            meta,
+            advices,
+            [meta.fixed_column(); HASH_TAG_LENGTH],
+        );
+
+        // Enable selector only when we want to disclose amount
+        meta.create_gate("selective disclosure constraint", |meta| {
+            let sel = meta.query_selector(sel_disclose);
+            let amount = meta.query_advice(advices[1], 0);
+            let disclosed_amount = meta.query_instance(instance, 2); // 3rd public input = amount if disclosed
+
+            vec![sel * (amount - disclosed_amount)]
+        });
+
+        TransferConfig {
+            poseidon_config,
+            sel_disclose,
+            instance,
+        }
+    }
+
+    fn synthesize(
+        &self,
+        config: Self::Config,
+        mut layouter: impl Layouter<F>,
+    ) -> Result<(), Error> {
+        let poseidon_chip = PoseidonChip::construct(config.poseidon_config);
+
+        // ── Sender commitment = poseidon(old_balance - amount || sender_blinding) ──
+        let sender_region = layouter.namespace(|| "sender commitment")?;
+        let sender_diff = self.sender_old_balance - self.amount;
+        let sender_inputs = [sender_diff, self.sender_blinding];
+        let computed_sender_commit = poseidon_chip.hash(sender_region, &sender_inputs)?;
+
+        // Constrain to public input [0]
+        layouter.assign_region(
+            || "constrain sender commit",
+            |mut region| {
+                let cell = computed_sender_commit.copy_advice(|| "computed", &mut region, 0)?;
+                region.constrain_equal(cell.cell(), self.sender_commitment)?;
+                Ok(())
+            },
+        )?;
+
+        // ── Receiver commitment = poseidon(amount || receiver_blinding) ──
+        let receiver_region = layouter.namespace(|| "receiver commitment")?;
+        let receiver_inputs = [self.amount, self.receiver_blinding];
+        let computed_receiver_commit = poseidon_chip.hash(receiver_region, &receiver_inputs)?;
+
+        layouter.assign_region(
+            || "constrain receiver commit",
+            |mut region| {
+                let cell = computed_receiver_commit.copy_advice(|| "computed", &mut region, 0)?;
+                region.constrain_equal(cell.cell(), self.receiver_commitment)?;
+                Ok(())
+            },
+        )?;
+
+        // ── Selective disclosure path ──
+        if self.disclose_amount {
+            layouter.assign_region(
+                || "disclose amount",
+                |mut region| {
+                    config.sel_disclose.enable(&mut region, 0)?;
+                    self.amount.copy_advice(|| "amount visible", &mut region, 1)?;
+                    Ok(())
+                },
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
+fn main() {
+    let mut rng = OsRng;
+
+    // Example witness values
+    let old_balance     = F::from(1000u64);
+    let amount          = F::from(250u64);
+    let sender_blind    = F::random(&mut rng);
+    let receiver_blind  = F::random(&mut rng);
+
+    // In real app: compute real Poseidon hashes here
+    let dummy_sender_commit   = F::from(0x1234abcd); // placeholder
+    let dummy_receiver_commit = F::from(0x5678efgh);
+
+    // Case 1: normal private transfer (no disclosure)
+    let circuit_hidden = PrivateTransferCircuit {
+        sender_old_balance: Value::known(old_balance),
+        amount: Value::known(amount),
+        sender_blinding: Value::known(sender_blind),
+        receiver_blinding: Value::known(receiver_blind),
+        sender_commitment: dummy_sender_commit,
+        receiver_commitment: dummy_receiver_commit,
+        disclose_amount: false,
+    };
+
+    let public_inputs_hidden = vec![dummy_sender_commit, dummy_receiver_commit];
+    let prover_hidden = MockProver::run(8, &circuit_hidden, vec![public_inputs_hidden.clone()]).unwrap();
+    prover_hidden.assert_satisfied();
+    println!("Hidden amount version → proof OK ✓");
+
+    // Case 2: selective disclosure – reveal amount to auditor
+    let circuit_disclosed = PrivateTransferCircuit {
+        sender_old_balance: Value::known(old_balance),
+        amount: Value::known(amount),
+        sender_blinding: Value::known(sender_blind),
+        receiver_blinding: Value::known(receiver_blind),
+        sender_commitment: dummy_sender_commit,
+        receiver_commitment: dummy_receiver_commit,
+        disclose_amount: true,
+    };
+
+    // Public inputs now include the revealed amount as 3rd value
+    let public_inputs_disclosed = vec![dummy_sender_commit, dummy_receiver_commit, amount];
+    let prover_disclosed = MockProver::run(8, &circuit_disclosed, vec![public_inputs_disclosed]).unwrap();
+    prover_disclosed.assert_satisfied();
+    println!("Selective disclosure (amount = {}) → proof OK ✓", amount);
+
+    println!("\nInteresting extension ideas:");
+    println!("• Derive viewing key from spending key → check if proof matches vk");
+    println!("• Add range check on amount (0 < amount ≤ old_balance)");
+    println!("• Nullifier = poseidon(spending_key || commitment) to prevent double-spend");
+    println!("• Integrate with Aztec Noir or PSE halo2-gadgets for real shielded pool");
+}
