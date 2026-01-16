@@ -28,3 +28,5 @@ fn main() {
 
     println!("✅ Solidity verifier generated: Verifier.sol");
 }
+
+cargo run --bin export_verifier
