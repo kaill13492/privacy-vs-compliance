@@ -1,0 +1,20 @@
+privacy-vs-compliance/
+├─ src/
+│  ├─ lib.rs
+│  ├─ commitments/
+│  │  └─ mod.rs
+│  ├─ disclosure/
+│  │  └─ mod.rs
+│  ├─ merkle/
+│  │  └─ mod.rs
+│  └─ circuits/
+│     └─ transfer.rs
+├─ tests/
+│  ├─ disclosure.rs
+│  └─ merkle.rs
+├─ docs/
+│  ├─ architecture.md
+│  └─ compliance.md
+├─ .github/workflows/ci.yml
+├─ Cargo.toml
+└─ README.md
