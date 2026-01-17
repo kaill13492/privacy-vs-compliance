@@ -1,13 +1,43 @@
-/// Placeholder for Halo2 transfer circuit
-///
-/// Enforces:
-/// - input commitment exists in Merkle tree
-/// - output commitment is valid
-/// - sum(inputs) == sum(outputs)
+use halo2_proofs::{
+    circuit::{Layouter, SimpleFloorPlanner},
+    plonk::{Circuit, ConstraintSystem, Error},
+};
+use pasta_curves::pallas;
+
+/// TransferCircuit enforces:
+/// - input commitment exists in Merkle tree (TODO)
+/// - output commitment validity (TODO)
+/// - sum(inputs) == sum(outputs) (TODO)
+#[derive(Default)]
 pub struct TransferCircuit;
 
-impl TransferCircuit {
-    pub fn describe() {
-        println!("Private transfer with zk-proof + compliance hooks");
+#[derive(Clone, Debug)]
+pub struct TransferConfig {
+    // Tu będą kolumny: advice, instance, selectors
+}
+
+impl Circuit<pallas::Base> for TransferCircuit {
+    type Config = TransferConfig;
+    type FloorPlanner = SimpleFloorPlanner;
+
+    fn without_witnesses(&self) -> Self {
+        Self
+    }
+
+    fn configure(_meta: &mut ConstraintSystem<pallas::Base>) -> Self::Config {
+        // TODO: define advice columns, selectors, constraints
+        TransferConfig {}
+    }
+
+    fn synthesize(
+        &self,
+        _config: Self::Config,
+        _layouter: impl Layouter<pallas::Base>,
+    ) -> Result<(), Error> {
+        // TODO:
+        // - Merkle path verification
+        // - commitment hash
+        // - balance conservation constraint
+        Ok(())
     }
 }
